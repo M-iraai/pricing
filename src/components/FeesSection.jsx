@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Search, Copy, Check, X, Home, Building2, Truck, RefreshCw } from 'lucide-react'
 
 const WILAYA_EN = {
@@ -29,6 +29,7 @@ export default function FeesSection() {
   const [search, setSearch] = useState('')
   const [selectedWilaya, setSelectedWilaya] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [toast, setToast] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
@@ -65,6 +66,14 @@ export default function FeesSection() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [loadFees])
 
+  // Clear pending timers on unmount
+  useEffect(() => {
+    return () => {
+      if (dismissTimer.current) clearTimeout(dismissTimer.current)
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+    }
+  }, [])
+
   const sortedWilayas = useMemo(() => {
     return [...wilayas].sort((a, b) => {
       const enA = wilayaNameEn(a.wilaya_name)
@@ -97,12 +106,24 @@ export default function FeesSection() {
       .finally(() => setRefreshing(false))
   }
 
+  const dismissTimer = useRef(null)
+  const toastTimer = useRef(null)
+
   const handleCopy = () => {
     if (!selectedFee) return
     const text = `التوصيل للمنزل: ${selectedFee.tarif} دج\nالتوصيل للبيرو: ${selectedFee.tarif_stopdesk} دج`
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      // Confirmation toast (outlives the card)
+      setToast(true)
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+      toastTimer.current = setTimeout(() => setToast(false), 1800)
+      // Let the "تم النسخ!" state show briefly, then hide the card to keep things clean
+      if (dismissTimer.current) clearTimeout(dismissTimer.current)
+      dismissTimer.current = setTimeout(() => {
+        setSelectedWilaya(null)
+        setCopied(false)
+      }, 800)
     })
   }
 
@@ -117,6 +138,13 @@ export default function FeesSection() {
 
   return (
     <div className="space-y-4">
+      {/* Copy confirmation toast */}
+      {toast && (
+        <div className="fixed bottom-24 right-1/2 translate-x-1/2 z-50 bg-ink text-white text-sm font-bold px-5 py-2.5 rounded-full shadow-lg animate-[fadeSlideIn_0.25s_ease] pointer-events-none">
+          تم النسخ ✓
+        </div>
+      )}
+
       {/* Search Input */}
       <div className="relative">
         <Search size={18} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-subtle2 pointer-events-none" />
