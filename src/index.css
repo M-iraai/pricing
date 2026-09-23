@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    color: #111827;
+    font-family: 'Cairo', Arial, sans-serif;
+  }
+  body {
+    min-height: 100vh;
+  }
+  button, input, select {
+    font: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  .app-container {
+    width: min(100%, 430px);
+    min-height: 100vh;
+    margin: auto;
+    background: #fff;
+    padding: 13px 13px calc(24px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Fee section animations */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes popIn {
+  from { transform: scale(0.5); }
+  to { transform: scale(1); }
+}
