@@ -14,6 +14,7 @@ function registerApi(server) {
     if (!ECOTRACK_TOKEN || !ECOTRACK_BASE) {
       res.statusCode = 500
       res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Cache-Control', 'no-store')
       return res.end(JSON.stringify({ error: 'ECOTRACK_TOKEN or ECOTRACK_BASE_URL missing' }))
     }
     fetch(`${ECOTRACK_BASE}/api/v1/get/fees`, {
@@ -23,11 +24,13 @@ function registerApi(server) {
     .then(r => r.json())
     .then(data => {
       res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Cache-Control', 'no-store')
       res.end(JSON.stringify(data))
     })
     .catch(err => {
       res.statusCode = 502
       res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Cache-Control', 'no-store')
       res.end(JSON.stringify({ error: err.message }))
     })
   })
@@ -38,6 +41,7 @@ function registerApi(server) {
     if (!ECOTRACK_TOKEN || !ECOTRACK_BASE) {
       res.statusCode = 500
       res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Cache-Control', 'no-store')
       return res.end(JSON.stringify({ error: 'ECOTRACK_TOKEN or ECOTRACK_BASE_URL missing' }))
     }
     fetch(`${ECOTRACK_BASE}/api/v1/get/wilayas`, {
@@ -47,11 +51,13 @@ function registerApi(server) {
     .then(r => r.json())
     .then(data => {
       res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Cache-Control', 'no-store')
       res.end(JSON.stringify(data))
     })
     .catch(err => {
       res.statusCode = 502
       res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Cache-Control', 'no-store')
       res.end(JSON.stringify({ error: err.message }))
     })
   })

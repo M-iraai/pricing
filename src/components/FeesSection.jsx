@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { Search, Copy, Check, X, Home, Building2, Truck } from 'lucide-react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Search, Copy, Check, X, Home, Building2, Truck, RefreshCw } from 'lucide-react'
 
 const WILAYA_EN = {
   'أدرار': 'Adrar', 'الشلف': 'Chlef', 'الأغواط': 'Laghouat', 'أم البواقي': 'Oum El Bouaghi',
@@ -30,17 +30,40 @@ export default function FeesSection() {
   const [selectedWilaya, setSelectedWilaya] = useState(null)
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState(null)
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/fees').then(r => r.json()),
-      fetch('/api/wilayas').then(r => r.json()),
+  const loadFees = useCallback(() => {
+    // `no-store` + cache-busting param so no proxy/CDN can serve an old price
+    const bust = Date.now()
+    return Promise.all([
+      fetch(`/api/fees?t=${bust}`, { cache: 'no-store' }).then(r => r.json()),
+      fetch(`/api/wilayas?t=${bust}`, { cache: 'no-store' }).then(r => r.json()),
     ]).then(([fees, wils]) => {
       setFeesData(fees)
       setWilayas(wils)
-      setLoading(false)
-    }).catch(() => setLoading(false))
+      setLastUpdated(Date.now())
+      return true
+    })
   }, [])
+
+  useEffect(() => {
+    loadFees()
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [loadFees])
+
+  // Auto-refresh when the user returns to the app after it was in the background,
+  // so a long-idle PWA always shows current prices
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        loadFees().catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [loadFees])
 
   const sortedWilayas = useMemo(() => {
     return [...wilayas].sort((a, b) => {
@@ -66,6 +89,13 @@ export default function FeesSection() {
     const arr = feesData.livraison || []
     return arr.find(f => f.wilaya_id === selectedWilaya.wilaya_id) || null
   }, [feesData, selectedWilaya])
+
+  const handleRefresh = () => {
+    setRefreshing(true)
+    loadFees()
+      .catch(() => {})
+      .finally(() => setRefreshing(false))
+  }
 
   const handleCopy = () => {
     if (!selectedFee) return
@@ -105,6 +135,21 @@ export default function FeesSection() {
             <X size={14} className="text-subtle2" />
           </button>
         )}
+      </div>
+
+      {/* Refresh bar */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-subtle2">
+          {lastUpdated ? `آخر تحديث: ${new Date(lastUpdated).toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' })}` : ''}
+        </span>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 text-xs font-bold text-purple hover:text-purple-2 disabled:opacity-50 transition-colors"
+        >
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          تحديث الأسعار
+        </button>
       </div>
 
       {/* Result count */}
