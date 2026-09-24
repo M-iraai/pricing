@@ -23,6 +23,12 @@ const WILAYA_EN = {
 
 const wilayaNameEn = (name) => WILAYA_EN[name] || ''
 
+const getJson = (url) =>
+  fetch(url, { cache: 'no-store' }).then(r => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  })
+
 export default function FeesSection() {
   const [feesData, setFeesData] = useState(null)
   const [wilayas, setWilayas] = useState([])
@@ -33,18 +39,26 @@ export default function FeesSection() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [error, setError] = useState(null)
 
   const loadFees = useCallback(() => {
     // `no-store` + cache-busting param so no proxy/CDN can serve an old price
     const bust = Date.now()
+    setError(null)
     return Promise.all([
-      fetch(`/api/fees?t=${bust}`, { cache: 'no-store' }).then(r => r.json()),
-      fetch(`/api/wilayas?t=${bust}`, { cache: 'no-store' }).then(r => r.json()),
+      getJson(`/api/fees?t=${bust}`),
+      getJson(`/api/wilayas?t=${bust}`),
     ]).then(([fees, wils]) => {
+      if (!fees || !Array.isArray(fees.livraison) || !Array.isArray(wils)) {
+        throw new Error('Unexpected API payload')
+      }
       setFeesData(fees)
       setWilayas(wils)
       setLastUpdated(Date.now())
       return true
+    }).catch(err => {
+      setError(err.message || 'Failed to load')
+      throw err
     })
   }, [])
 
@@ -132,6 +146,26 @@ export default function FeesSection() {
       <div className="flex flex-col items-center justify-center py-16 gap-3">
         <div className="w-8 h-8 border-3 border-purple/20 border-t-purple rounded-full animate-spin" />
         <span className="text-subtle2 text-sm">جاري تحميل الأسعار...</span>
+      </div>
+    )
+  }
+
+  if (error && !feesData) {
+    return (
+      <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center">
+          <X size={22} className="text-red-500" />
+        </div>
+        <div className="text-sm font-bold text-ink">تعذّر تحميل الأسعار</div>
+        <div className="text-xs text-subtle2" dir="ltr">{error}</div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 text-xs font-bold text-white bg-purple hover:bg-purple-2 px-5 py-2.5 rounded-full disabled:opacity-50 transition-colors"
+        >
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          إعادة المحاولة
+        </button>
       </div>
     )
   }
