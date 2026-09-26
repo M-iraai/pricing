@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Search, Copy, Check, X, Home, Building2, Truck, RefreshCw } from 'lucide-react'
+import { Search, Copy, Check, X, Home, Building2, MapPin, Phone, RefreshCw } from 'lucide-react'
 
 const WILAYA_EN = {
   'أدرار': 'Adrar', 'الشلف': 'Chlef', 'الأغواط': 'Laghouat', 'أم البواقي': 'Oum El Bouaghi',
@@ -23,6 +23,10 @@ const WILAYA_EN = {
 
 const wilayaNameEn = (name) => WILAYA_EN[name] || ''
 
+// `/api/wilayas` currently returns English names ("Adrar"); older payloads returned
+// Arabic ones. Resolve a display-safe English name either way.
+const nameEnOf = (name) => wilayaNameEn(name) || name || ''
+
 const getJson = (url) =>
   fetch(url, { cache: 'no-store' }).then(r => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
@@ -40,6 +44,7 @@ export default function FeesSection() {
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [error, setError] = useState(null)
+  const [desksData, setDesksData] = useState(null)
 
   const loadFees = useCallback(() => {
     // `no-store` + cache-busting param so no proxy/CDN can serve an old price
@@ -48,12 +53,15 @@ export default function FeesSection() {
     return Promise.all([
       getJson(`/api/fees?t=${bust}`),
       getJson(`/api/wilayas?t=${bust}`),
-    ]).then(([fees, wils]) => {
+      // Stop-desk list is optional: prices must still load if this route fails
+      getJson(`/api/desks?t=${bust}`).catch(() => null),
+    ]).then(([fees, wils, desks]) => {
       if (!fees || !Array.isArray(fees.livraison) || !Array.isArray(wils)) {
         throw new Error('Unexpected API payload')
       }
       setFeesData(fees)
       setWilayas(wils)
+      setDesksData(desks && typeof desks === 'object' ? desks : null)
       setLastUpdated(Date.now())
       return true
     }).catch(err => {
@@ -90,8 +98,8 @@ export default function FeesSection() {
 
   const sortedWilayas = useMemo(() => {
     return [...wilayas].sort((a, b) => {
-      const enA = wilayaNameEn(a.wilaya_name)
-      const enB = wilayaNameEn(b.wilaya_name)
+      const enA = nameEnOf(a.wilaya_name)
+      const enB = nameEnOf(b.wilaya_name)
       return enA.localeCompare(enB)
     })
   }, [wilayas])
@@ -100,7 +108,7 @@ export default function FeesSection() {
     const q = search.trim().toLowerCase()
     if (!q) return sortedWilayas
     return sortedWilayas.filter(w => {
-      const en = wilayaNameEn(w.wilaya_name).toLowerCase()
+      const en = nameEnOf(w.wilaya_name).toLowerCase()
       const ar = w.wilaya_name.toLowerCase()
       const id = String(w.wilaya_id)
       return en.startsWith(q) || ar.startsWith(q) || id.startsWith(q)
@@ -112,6 +120,55 @@ export default function FeesSection() {
     const arr = feesData.livraison || []
     return arr.find(f => f.wilaya_id === selectedWilaya.wilaya_id) || null
   }, [feesData, selectedWilaya])
+
+  // English wilaya name → wilaya_id (used to place our own hub in its wilaya)
+  const idByEnglishName = useMemo(() => {
+    const map = {}
+    for (const w of wilayas) {
+      const en = nameEnOf(w.wilaya_name)
+      if (en) map[en.toLowerCase()] = w.wilaya_id
+    }
+    return map
+  }, [wilayas])
+
+  // Stop-desk offices grouped by wilaya id
+  const desksByWilaya = useMemo(() => {
+    const map = {}
+    const add = (id, desk) => {
+      if (!id) return
+      const list = map[id] || (map[id] = [])
+      const key = `${desk.name}|${desk.phone}`
+      if (list.some(d => `${d.name}|${d.phone}` === key)) return
+      list.push(desk)
+    }
+
+    const others = desksData?.other_desks
+    if (Array.isArray(others)) {
+      for (const d of others) {
+        add(Number(d.code_wilaya), {
+          name: d.name || '',
+          commune: d.commune || '',
+          adresse: d.adresse || '',
+          phone: d.phone || '',
+          map: d.map || '',
+        })
+      }
+    }
+
+    const my = desksData?.my_desk
+    if (my && my.hub_name) {
+      const loc = my.location || {}
+      add(idByEnglishName[String(loc.wilaya || '').toLowerCase()], {
+        name: my.hub_name,
+        commune: loc.commune || '',
+        adresse: loc.adresse || '',
+        phone: loc.phone || '',
+        map: loc.map || '',
+      })
+    }
+
+    return map
+  }, [desksData, idByEnglishName])
 
   const handleRefresh = () => {
     setRefreshing(true)
@@ -224,70 +281,7 @@ export default function FeesSection() {
         </span>
       </div>
 
-      {/* Price Cards — animated */}
-      {selectedWilaya && selectedFee && (
-        <div className="animate-[fadeSlideIn_0.25s_ease] space-y-3">
-          {/* Wilaya name header */}
-          <div className="bg-gradient-to-l from-purple to-purple-2 rounded-2xl p-4 text-white relative overflow-hidden">
-            <div className="absolute -left-4 -top-4 w-24 h-24 bg-white/10 rounded-full" />
-            <div className="absolute -right-2 -bottom-6 w-20 h-20 bg-white/5 rounded-full" />
-            <div className="relative">
-              <div className="text-xs text-white/70 mb-0.5">
-                <Truck size={12} className="inline -mt-0.5 ml-1" />
-                رقم الولاية {selectedWilaya.wilaya_id < 10 ? `0${selectedWilaya.wilaya_id}` : selectedWilaya.wilaya_id}
-              </div>
-              <div className="text-lg font-extrabold">{wilayaNameEn(selectedWilaya.wilaya_name)}</div>
-              <div className="text-sm text-white/80">{selectedWilaya.wilaya_name}</div>
-            </div>
-          </div>
-
-          {/* Price cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white border border-border rounded-2xl p-4 text-center shadow-stat relative overflow-hidden">
-              <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-purple to-purple-2 rounded-b-2xl" />
-              <div className="w-10 h-10 mx-auto mb-2 bg-lav rounded-xl flex items-center justify-center">
-                <Home size={18} className="text-purple" />
-              </div>
-              <div className="text-[11px] text-subtle2 mb-1 font-medium">للمنزل</div>
-              <div className="text-2xl font-extrabold text-ink">{selectedFee.tarif}</div>
-              <div className="text-[11px] text-subtle2">دج</div>
-            </div>
-            <div className="bg-white border border-border rounded-2xl p-4 text-center shadow-stat relative overflow-hidden">
-              <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-b-2xl" />
-              <div className="w-10 h-10 mx-auto mb-2 bg-emerald-50 rounded-xl flex items-center justify-center">
-                <Building2 size={18} className="text-emerald-600" />
-              </div>
-              <div className="text-[11px] text-subtle2 mb-1 font-medium">للبيرو</div>
-              <div className="text-2xl font-extrabold text-ink">{selectedFee.tarif_stopdesk}</div>
-              <div className="text-[11px] text-subtle2">دج</div>
-            </div>
-          </div>
-
-          {/* Copy button */}
-          <button
-            onClick={handleCopy}
-            className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] ${
-              copied
-                ? 'bg-emerald-500 text-white'
-                : 'bg-emerald-500 text-white hover:bg-emerald-600'
-            }`}
-          >
-            {copied ? (
-              <>
-                <Check size={18} className="animate-[popIn_0.2s_ease]" />
-                تم النسخ!
-              </>
-            ) : (
-              <>
-                <Copy size={18} />
-                نسخ الأسعار
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Wilayas List */}
+      {/* Wilayas List — the selected row expands with prices + stop desks */}
       <div className="space-y-2">
         {filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 gap-2 text-subtle2">
@@ -300,47 +294,164 @@ export default function FeesSection() {
         {filtered.map(w => {
           const fee = (feesData?.livraison || []).find(f => f.wilaya_id === w.wilaya_id)
           const isSelected = selectedWilaya?.wilaya_id === w.wilaya_id
+          const desks = desksByWilaya[w.wilaya_id] || []
 
           return (
-            <button
-              key={w.wilaya_id}
-              onClick={() => setSelectedWilaya(isSelected ? null : w)}
-              className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] text-right ${
-                isSelected
-                  ? 'bg-lav border-purple/30 shadow-stat'
-                  : 'bg-white border-border hover:border-purple/20 hover:shadow-product'
-              }`}
-            >
-              {/* ID badge */}
-              <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold ${
-                isSelected ? 'bg-purple text-white' : 'bg-gray-100 text-subtle2'
-              }`}>
-                {w.wilaya_id < 10 ? `0${w.wilaya_id}` : w.wilaya_id}
-              </div>
-
-              {/* Name */}
-              <div className="flex-1 min-w-0">
-                <div className={`text-sm font-bold truncate ${isSelected ? 'text-purple' : 'text-ink'}`}>
-                  {wilayaNameEn(w.wilaya_name)}
+            <div key={w.wilaya_id} className="space-y-2">
+              <button
+                onClick={() => setSelectedWilaya(isSelected ? null : w)}
+                className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] text-right ${
+                  isSelected
+                    ? 'bg-lav border-purple/30 shadow-stat'
+                    : 'bg-white border-border hover:border-purple/20 hover:shadow-product'
+                }`}
+              >
+                {/* ID badge */}
+                <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold ${
+                  isSelected ? 'bg-purple text-white' : 'bg-gray-100 text-subtle2'
+                }`}>
+                  {w.wilaya_id < 10 ? `0${w.wilaya_id}` : w.wilaya_id}
                 </div>
-                <div className="text-xs text-subtle2 truncate">{w.wilaya_name}</div>
-              </div>
 
-              {/* Price */}
-              {fee && (
-                <div className="flex-shrink-0 text-left">
-                  <div className="text-xs text-subtle2">🏠 {fee.tarif}</div>
-                  <div className="text-xs text-subtle2">📦 {fee.tarif_stopdesk}</div>
+                {/* Name */}
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm font-bold truncate ${isSelected ? 'text-purple' : 'text-ink'}`}>
+                    {nameEnOf(w.wilaya_name)}
+                  </div>
+                  {wilayaNameEn(w.wilaya_name) && (
+                    <div className="text-xs text-subtle2 truncate">{w.wilaya_name}</div>
+                  )}
+                </div>
+
+                {/* Price */}
+                {fee && (
+                  <div className="flex-shrink-0 text-left">
+                    <div className="text-xs text-subtle2">🏠 {fee.tarif}</div>
+                    <div className="text-xs text-subtle2">📦 {fee.tarif_stopdesk}</div>
+                  </div>
+                )}
+
+                {/* Arrow */}
+                <div className={`flex-shrink-0 transition-transform ${isSelected ? 'rotate-180 text-purple' : 'text-border7'}`}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+              </button>
+
+              {/* Expanded panel — prices + stop desks, right under the selected wilaya */}
+              {isSelected && (
+                <div className="animate-[fadeSlideIn_0.25s_ease] space-y-3 pl-1">
+                  {/* Price cards */}
+                  {fee && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-white border border-border rounded-2xl p-4 text-center shadow-stat relative overflow-hidden">
+                        <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-purple to-purple-2 rounded-b-2xl" />
+                        <div className="w-10 h-10 mx-auto mb-2 bg-lav rounded-xl flex items-center justify-center">
+                          <Home size={18} className="text-purple" />
+                        </div>
+                        <div className="text-[11px] text-subtle2 mb-1 font-medium">للمنزل</div>
+                        <div className="text-2xl font-extrabold text-ink">{fee.tarif}</div>
+                        <div className="text-[11px] text-subtle2">دج</div>
+                      </div>
+                      <div className="bg-white border border-border rounded-2xl p-4 text-center shadow-stat relative overflow-hidden">
+                        <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-b-2xl" />
+                        <div className="w-10 h-10 mx-auto mb-2 bg-emerald-50 rounded-xl flex items-center justify-center">
+                          <Building2 size={18} className="text-emerald-600" />
+                        </div>
+                        <div className="text-[11px] text-subtle2 mb-1 font-medium">للبيرو</div>
+                        <div className="text-2xl font-extrabold text-ink">{fee.tarif_stopdesk}</div>
+                        <div className="text-[11px] text-subtle2">دج</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Stop-desk offices */}
+                  {desksData && (
+                    <div className="bg-white border border-border rounded-2xl p-4 shadow-stat">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2 text-sm font-bold text-ink">
+                          <MapPin size={15} className="text-purple" />
+                          مكاتب الاستلام (Stop Desk)
+                        </div>
+                        <span className="text-[11px] font-bold text-purple bg-lav px-2 py-0.5 rounded-full">
+                          {desks.length}
+                        </span>
+                      </div>
+
+                      {desks.length === 0 ? (
+                        <div className="text-xs text-subtle2">
+                          لا توجد مكاتب استلام في هذه الولاية — التوصيل للمنزل متاح فقط.
+                        </div>
+                      ) : (
+                        <ul className="space-y-2">
+                          {desks.map((d, i) => (
+                            <li
+                              key={`${d.name}-${i}`}
+                              className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-border/70"
+                            >
+                              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-lav flex items-center justify-center">
+                                <MapPin size={15} className="text-purple" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-[13px] font-bold text-ink truncate">{d.name}</div>
+                                <div className="text-xs text-subtle2 truncate">
+                                  {[d.commune, d.adresse]
+                                    .filter((v, i, arr) => v && (i === 0 || v !== arr[i - 1]))
+                                    .join(' — ')}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
+                                  {d.phone && (
+                                    <a
+                                      href={`tel:${d.phone}`}
+                                      dir="ltr"
+                                      className="flex items-center gap-1 text-xs font-bold text-purple hover:text-purple-2 transition-colors"
+                                    >
+                                      <Phone size={12} />
+                                      {d.phone}
+                                    </a>
+                                  )}
+                                  {d.map && (
+                                    <a
+                                      href={d.map}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
+                                    >
+                                      الموقع على الخريطة ↗
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Copy button */}
+                  {fee && (
+                    <button
+                      onClick={handleCopy}
+                      className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] bg-emerald-500 text-white hover:bg-emerald-600"
+                    >
+                      {copied ? (
+                        <>
+                          <Check size={18} className="animate-[popIn_0.2s_ease]" />
+                          تم النسخ!
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={18} />
+                          نسخ الأسعار
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               )}
-
-              {/* Arrow */}
-              <div className={`flex-shrink-0 transition-transform ${isSelected ? 'rotate-180 text-purple' : 'text-border7'}`}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-            </button>
+            </div>
           )
         })}
       </div>

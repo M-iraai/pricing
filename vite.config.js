@@ -35,6 +35,33 @@ function registerApi(server) {
     })
   })
 
+  // GET /api/desks — ECOTRACK stop-desk offices
+  server.middlewares.use('/api/desks', (req, res, next) => {
+    if (req.method !== 'GET') return next()
+    if (!ECOTRACK_TOKEN || !ECOTRACK_BASE) {
+      res.statusCode = 500
+      res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Cache-Control', 'no-store')
+      return res.end(JSON.stringify({ error: 'ECOTRACK_TOKEN or ECOTRACK_BASE_URL missing' }))
+    }
+    fetch(`${ECOTRACK_BASE}/api/v1/get/desks`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${ECOTRACK_TOKEN}`, Accept: 'application/json' },
+    })
+    .then(r => r.json())
+    .then(data => {
+      res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Cache-Control', 'no-store')
+      res.end(JSON.stringify(data))
+    })
+    .catch(err => {
+      res.statusCode = 502
+      res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Cache-Control', 'no-store')
+      res.end(JSON.stringify({ error: err.message }))
+    })
+  })
+
   // GET /api/wilayas — ECOTRACK wilayas list
   server.middlewares.use('/api/wilayas', (req, res, next) => {
     if (req.method !== 'GET') return next()

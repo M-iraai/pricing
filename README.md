@@ -13,11 +13,14 @@ cp .env.example .env   # then fill ECOTRACK_TOKEN + ECOTRACK_BASE_URL
 npm run dev
 ```
 
-The two API routes (`/api/fees`, `/api/wilayas`) are served two ways:
+Selecting a wilaya expands its row with the home/office prices, a copy button and
+the stop-desk offices (ECOTRACK `/api/v1/get/desks`) available in that wilaya.
+
+The three API routes (`/api/fees`, `/api/wilayas`, `/api/desks`) are served two ways:
 
 - **Local**: Vite middlewares defined in `vite.config.js` (work in `npm run dev` and `npm run preview`).
-- **Vercel**: serverless functions in `api/fees.js` and `api/wilayas.js` (a static
-  build has no Vite server, so the middlewares don't exist there).
+- **Vercel**: serverless functions in `api/fees.js`, `api/wilayas.js` and `api/desks.js`
+  (a static build has no Vite server, so the middlewares don't exist there).
 
 ## Deploy (Vercel)
 
@@ -31,7 +34,8 @@ ECOTRACK_BASE_URL=<ecotrack base url>
 ```
 
 `.env` is gitignored, so Vercel does **not** get these values automatically — without
-them `/api/fees` and `/api/wilayas` return 500 and the app shows "تعذّر تحميل الأسعار".
+them `/api/fees` and `/api/wilayas` return 500 and the app shows "تعذّر تحميل الأسعار"
+(`/api/desks` failing only hides the stop-desk list, prices still load).
 
 ## Build
 
